@@ -45,7 +45,7 @@ fn check_message(buf: &[u8; 10]) -> bool {
 }
 
 fn parse_message(buf: &[u8; 10]) -> Option<()> {
-    if check_message(buf) {
+    if !check_message(buf) {
         return None;
     }
 
@@ -63,8 +63,9 @@ fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
 
     loop {
         let bytes = read_bytes(port).unwrap();
+        println!("bytes: {:?}", bytes);
         let msg = parse_message(&bytes);
-        println!("byte: {:?}", msg);
+        println!("msg: {:?}", msg);
     }
 
     Ok(())
@@ -74,6 +75,12 @@ fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
 fn test_crc_check_passes() {
     let buf: &[u8; 10] = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
     assert_eq!(true, check_crc(buf));
+}
+
+#[test]
+fn test_message_valid() {
+    let buf: &[u8; 10] = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
+    assert_eq!(true, check_message(buf));
 }
 
 #[test]
