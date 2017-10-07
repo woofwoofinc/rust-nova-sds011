@@ -61,6 +61,7 @@ fn parse_message(buf: &[u8; 10]) -> Option<Message> {
 fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
     port.reconfigure(&|settings| {
         settings.set_baud_rate(BaudRate::Baud9600).unwrap();
+        settings.set_flow_control(serial::FlowControl::FlowNone);
         Ok(())
     }).unwrap();
 
