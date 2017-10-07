@@ -1,0 +1,7 @@
+[package]
+name = "nova-sds011"
+version = "0.1.0"
+authors = ["Pascal Hartig <phartig@rdrei.net>"]
+
+[dependencies]
+serial = "0.4.0"
