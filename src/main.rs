@@ -37,19 +37,25 @@ fn check_crc(buf: &[u8; 10]) -> bool {
 }
 
 fn check_header(buf: &[u8; 10]) -> bool {
-    buf[0] == 0xAA && buf[1] == 0xC0
+    buf[0] == 0xAA && buf[1] == 0xC0 && buf[9] == 0xAB
 }
 
 fn check_message(buf: &[u8; 10]) -> bool {
     check_header(buf) && check_crc(buf)
 }
 
-fn parse_message(buf: &[u8; 10]) -> Option<()> {
+fn parse_message(buf: &[u8; 10]) -> Option<Message> {
     if !check_message(buf) {
         return None;
     }
 
-    return Some(())
+    // Extract PM values. Formula from the spec:
+    //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
+    //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
+    return Some(Message {
+        pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
+        pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
+    })
 }
 
 fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
