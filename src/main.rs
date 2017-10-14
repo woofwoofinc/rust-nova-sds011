@@ -74,8 +74,6 @@ fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
         let msg = parse_message(&bytes);
         println!("msg: {:?}", msg);
     }
-
-    Ok(())
 }
 
 #[test]
