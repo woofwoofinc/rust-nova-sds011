@@ -52,7 +52,7 @@ fn parse_message(buf: &[u8; 10]) -> Option<Message> {
     // Extract PM values. Formula from the spec:
     //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
     //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
-    return Some(Message {
+    Some(Message {
         pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
         pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
     })
