@@ -20,6 +20,15 @@ fn read_bytes<T: SerialPort>(port: &mut T) -> io::Result<[u8; 10]> {
 }
 
 #[derive(Debug)]
+struct RawResponse {
+    header: u8, // Always 0xAA
+    command: u8, // 0xC0 in active mode, 0xC5 as reply
+    data: [u8; 6],
+    checksum: u8, // Sum of data bytes, rolling over
+    tail: u8, // always 0xAB
+}
+
+#[derive(Debug)]
 struct Message {
     pm25: f32,
     pm10: f32,
@@ -46,16 +55,16 @@ fn check_message(buf: &[u8; 10]) -> bool {
 
 fn parse_message(buf: &[u8; 10]) -> Option<Message> {
     if !check_message(buf) {
-        return None;
+        None
+    } else {
+        // Extract PM values. Formula from the spec:
+        //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
+        //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
+        Some(Message {
+            pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
+            pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
+        })
     }
-
-    // Extract PM values. Formula from the spec:
-    //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
-    //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
-    Some(Message {
-        pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
-        pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
-    })
 }
 
 fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
