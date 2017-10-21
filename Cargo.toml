@@ -5,3 +5,4 @@ authors = ["Pascal Hartig <phartig@rdrei.net>"]
 
 [dependencies]
 serial = "0.4.0"
+arrayref = "0.3.4"

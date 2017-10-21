@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate arrayref;
 extern crate serial;
 
 use std::io;
@@ -20,10 +22,10 @@ fn read_bytes<T: SerialPort>(port: &mut T) -> io::Result<[u8; 10]> {
 }
 
 #[derive(Debug)]
-struct RawResponse {
+struct RawResponse<'a> {
     header: u8, // Always 0xAA
     command: u8, // 0xC0 in active mode, 0xC5 as reply
-    data: [u8; 6],
+    data: &'a[u8; 6],
     checksum: u8, // Sum of data bytes, rolling over
     tail: u8, // always 0xAB
 }
@@ -34,27 +36,38 @@ struct Message {
     pm10: f32,
 }
 
-fn crc(buf: &[u8; 10]) -> u8 {
-    let s: u16 = buf[2..8].iter().map(|x| *x as u16).sum();
+fn crc(buf: &[u8; 6]) -> u8 {
+    let s: u16 = buf.iter().map(|x| *x as u16).sum();
     s as u8
 }
 
-fn check_crc(buf: &[u8; 10]) -> bool {
-    let cur_crc = crc(buf) as u8;
-    let nova_crc = buf[8] as u8;
-    cur_crc == nova_crc
+fn check_crc(rsp: &RawResponse) -> bool {
+    crc(&rsp.data) == rsp.checksum
 }
 
-fn check_header(buf: &[u8; 10]) -> bool {
-    buf[0] == 0xAA && buf[1] == 0xC0 && buf[9] == 0xAB
+fn check_header(rsp: &RawResponse) -> bool {
+    rsp.header == 0xAA && rsp.command == 0xC0 && rsp.tail == 0xAB
 }
 
-fn check_message(buf: &[u8; 10]) -> bool {
-    check_header(buf) && check_crc(buf)
+fn check_response(rsp: &RawResponse) -> bool {
+    check_header(rsp) && check_crc(rsp)
+}
+
+/// Turns a response into a struct, without making any
+/// guarantees about its validity.
+fn read_response(buf: &[u8; 10]) -> RawResponse {
+    RawResponse {
+        header: buf[0],
+        command: buf[1],
+        data: array_ref!(buf, 2, 6),
+        checksum: buf[8],
+        tail: buf[8]
+    }
 }
 
 fn parse_message(buf: &[u8; 10]) -> Option<Message> {
-    if !check_message(buf) {
+    let rsp = read_response(buf);
+    if !check_response(&rsp) {
         None
     } else {
         // Extract PM values. Formula from the spec:
