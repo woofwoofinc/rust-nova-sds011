@@ -19,11 +19,11 @@ mod errors {
         errors {
             InvalidHeaderError(h: u8, t: u8) {
                 description("invalid header or tail bytes"),
-                display("Invalid header tail bytes. Header: {:?}, tail: {:?}", h, t)
+                display("Invalid header tail bytes. Header: {:x}, tail: {:x}", h, t)
             }
             ChecksumError(expected: u8, actual: u8) {
                 description("invalid checksum"),
-                display("Invalid checksum. Expected: {:?}, actual: {:?}", expected, actual)
+                display("Invalid checksum. Expected: {:x}, actual: {:x}", expected, actual)
             }
         }
     }
