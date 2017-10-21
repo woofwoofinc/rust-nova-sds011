@@ -156,4 +156,19 @@ mod tests {
         let rsp = read_response(&[192, 14, 1, 21, 0, 64, 147, 246, 171, 170]);
         assert!(check_header(&rsp).is_err());
     }
+
+    #[test]
+    fn test_parses_message() {
+        let bytes = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
+        let msg = parse_message(bytes);
+        assert!(msg.is_ok());
+    }
+
+    #[test]
+    fn test_parses_values_in_active_mode() {
+        let bytes = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
+        let msg = parse_message(bytes).unwrap();
+        assert_eq!(msg.pm25, 1.3);
+        assert_eq!(msg.pm10, 2.1);
+    }
 }
