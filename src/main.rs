@@ -2,6 +2,7 @@
 extern crate arrayref;
 #[macro_use]
 extern crate error_chain;
+
 extern crate serial;
 
 use std::io;
@@ -75,7 +76,7 @@ fn check_header(rsp: &RawResponse) -> Result<()> {
     if rsp.header == 0xAA && rsp.command == 0xC0 && rsp.tail == 0xAB {
         Ok(())
     } else {
-        Err(ErrorKind::InvalidHeaderError(rsp.header, rsp.tail).into())
+        bail!(ErrorKind::InvalidHeaderError(rsp.header, rsp.tail))
     }
 }
 
@@ -91,7 +92,7 @@ fn read_response(buf: &[u8; 10]) -> RawResponse {
         command: buf[1],
         data: array_ref!(buf, 2, 6),
         checksum: buf[8],
-        tail: buf[8],
+        tail: buf[9],
     }
 }
 
@@ -127,26 +128,32 @@ fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
     }
 }
 
-#[test]
-fn test_crc_check_passes() {
-    let buf: &[u8; 10] = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
-    assert_eq!(true, check_crc(buf));
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_message_valid() {
-    let buf: &[u8; 10] = &[170, 192, 13, 0, 21, 0, 64, 147, 245, 171];
-    assert_eq!(true, check_message(buf));
-}
+    #[test]
+    fn test_crc_check_fails() {
+        let rsp = read_response(&[192, 14, 1, 21, 0, 64, 147, 246, 171, 170]);
+        assert!(check_crc(&rsp).is_err());
+    }
 
-#[test]
-fn test_crc_check_fails() {
-    let buf: &[u8; 10] = &[192, 14, 1, 21, 0, 64, 147, 246, 171, 170];
-    assert_eq!(false, check_crc(buf));
-}
+    #[test]
+    fn test_crc_check_passes() {
+        let rsp = read_response(&[170, 192, 13, 0, 21, 0, 64, 147, 245, 171]);
+        assert!(check_crc(&rsp).is_ok());
+    }
 
-#[test]
-fn test_header_check_fails() {
-    let buf: &[u8; 10] = &[192, 14, 1, 21, 0, 64, 147, 246, 171, 170];
-    assert_eq!(false, check_header(buf));
+    #[test]
+    fn test_header_valid() {
+        let rsp = read_response(&[170, 192, 13, 0, 21, 0, 64, 147, 245, 171]);
+        check_header(&rsp).unwrap();
+        assert!(check_header(&rsp).is_ok());
+    }
+
+    #[test]
+    fn test_header_check_fails() {
+        let rsp = read_response(&[192, 14, 1, 21, 0, 64, 147, 246, 171, 170]);
+        assert!(check_header(&rsp).is_err());
+    }
 }
