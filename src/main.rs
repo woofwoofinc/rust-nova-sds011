@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate arrayref;
+#[macro_use]
+extern crate error_chain;
 extern crate serial;
 
 use std::io;
@@ -8,6 +10,25 @@ use std::time::Duration;
 use serial::core::BaudRate;
 use std::iter::Iterator;
 use serial::prelude::*;
+
+// Keeping everything in one file for now for my sanity.
+mod errors {
+    // Create the Error, ErrorKind, ResultExt, and Result types
+    error_chain!{
+        errors {
+            InvalidHeaderError(h: u8, t: u8) {
+                description("invalid header or tail bytes"),
+                display("Invalid header tail bytes. Header: {:?}, tail: {:?}", h, t)
+            }
+            ChecksumError(expected: u8, actual: u8) {
+                description("invalid checksum"),
+                display("Invalid checksum. Expected: {:?}, actual: {:?}", expected, actual)
+            }
+        }
+    }
+}
+
+use errors::*;
 
 fn main() {
     // TODO: Read from env::arg_os().
@@ -23,11 +44,11 @@ fn read_bytes<T: SerialPort>(port: &mut T) -> io::Result<[u8; 10]> {
 
 #[derive(Debug)]
 struct RawResponse<'a> {
-    header: u8, // Always 0xAA
+    header: u8,  // Always 0xAA
     command: u8, // 0xC0 in active mode, 0xC5 as reply
-    data: &'a[u8; 6],
+    data: &'a [u8; 6],
     checksum: u8, // Sum of data bytes, rolling over
-    tail: u8, // always 0xAB
+    tail: u8,     // always 0xAB
 }
 
 #[derive(Debug)]
@@ -41,16 +62,25 @@ fn crc(buf: &[u8; 6]) -> u8 {
     s as u8
 }
 
-fn check_crc(rsp: &RawResponse) -> bool {
-    crc(&rsp.data) == rsp.checksum
+fn check_crc(rsp: &RawResponse) -> Result<()> {
+    let actual_crc = crc(&rsp.data);
+    if actual_crc == rsp.checksum {
+        Ok(())
+    } else {
+        bail!(ErrorKind::ChecksumError(actual_crc, rsp.checksum))
+    }
 }
 
-fn check_header(rsp: &RawResponse) -> bool {
-    rsp.header == 0xAA && rsp.command == 0xC0 && rsp.tail == 0xAB
+fn check_header(rsp: &RawResponse) -> Result<()> {
+    if rsp.header == 0xAA && rsp.command == 0xC0 && rsp.tail == 0xAB {
+        Ok(())
+    } else {
+        Err(ErrorKind::InvalidHeaderError(rsp.header, rsp.tail).into())
+    }
 }
 
-fn check_response(rsp: &RawResponse) -> bool {
-    check_header(rsp) && check_crc(rsp)
+fn check_response(rsp: &RawResponse) -> Result<()> {
+    check_header(rsp).and_then(|_| check_crc(rsp))
 }
 
 /// Turns a response into a struct, without making any
@@ -61,23 +91,22 @@ fn read_response(buf: &[u8; 10]) -> RawResponse {
         command: buf[1],
         data: array_ref!(buf, 2, 6),
         checksum: buf[8],
-        tail: buf[8]
+        tail: buf[8],
     }
 }
 
-fn parse_message(buf: &[u8; 10]) -> Option<Message> {
+fn parse_message(buf: &[u8; 10]) -> Result<Message> {
     let rsp = read_response(buf);
-    if !check_response(&rsp) {
-        None
-    } else {
-        // Extract PM values. Formula from the spec:
-        //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
-        //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
-        Some(Message {
-            pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
-            pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
-        })
-    }
+    try!(check_header(&rsp));
+    try!(check_response(&rsp));
+
+    // Extract PM values. Formula from the spec:
+    //   PM2.5 value: PM2.5 (ug/m3) = ((PM2.5 High byte *256) + PM2.5 low byte) / 10
+    //   PM10 value: PM10 (ug/m3) = ((PM10 high byte*256) + PM10 low byte) / 10
+    Ok(Message {
+        pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
+        pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
+    })
 }
 
 fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
