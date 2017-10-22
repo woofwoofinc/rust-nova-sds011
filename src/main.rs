@@ -44,13 +44,15 @@ mod errors {
 
 use errors::*;
 
-fn main() {
+quick_main!(|| -> Result<()> {
     // TODO: Read from env::arg_os().
-    let mut port = serial::open("/dev/ttyUSB0").expect("Cannot open ttyUSB0.");
+    let device = "/dev/ttyUSB0";
+    let mut port = serial::open(device).map_err(|e| format!("Failed to open serial device {:?}: {}", device, e))?;
     let mut nova = Nova::new(&mut port);
 
-    nova.interact().unwrap();
-}
+    nova.interact()?;
+    Ok(())
+});
 
 struct Nova<'a> {
     port: &'a mut SerialPort,
