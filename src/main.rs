@@ -15,6 +15,7 @@ use serial::prelude::*;
 // Keeping everything in one file for now for my sanity.
 mod errors {
     extern crate serial;
+    use std::io;
 
     // Create the Error, ErrorKind, ResultExt, and Result types
     error_chain!{
@@ -30,6 +31,10 @@ mod errors {
             SerialReconfigureError(err: serial::Error) {
                 description("failed serial reconfiguration"),
                 display("Failed to reconfigure serial port: {}", err)
+            }
+            SerialReadError(err: io::Error) {
+                description("failed reading serial data"),
+                display("Failed to read data from serial port: {}", err)
             }
         }
     }
@@ -61,7 +66,7 @@ impl<'a> Nova<'a> {
                 settings.set_flow_control(serial::FlowControl::FlowNone);
                 Ok(())
             })
-            .map_err(|e| ErrorKind::SerialReconfigureError(e))?;
+            .map_err(|err| ErrorKind::SerialReconfigureError(err))?;
 
         // Default interval between messages is 1s, so 1000ms is too low.
         try!(
@@ -71,7 +76,7 @@ impl<'a> Nova<'a> {
         );
 
         loop {
-            let bytes = read_bytes(self.port).unwrap();
+            let bytes = read_bytes(self.port).map_err(|err| ErrorKind::SerialReadError(err))?;
             println!("bytes: {:?}", bytes);
             let msg = parse_message(&bytes);
             println!("msg: {:?}", msg);
