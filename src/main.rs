@@ -51,20 +51,24 @@ struct Nova<'a> {
 
 impl<'a> Nova<'a> {
     pub fn new<T: SerialPort>(port: &mut T) -> Nova {
-        Nova {
-            port: port
-        }
+        Nova { port: port }
     }
 
     pub fn interact(self: &mut Self) -> Result<()> {
-        self.port.reconfigure(&|settings| {
-            settings.set_baud_rate(BaudRate::Baud9600).unwrap();
-            settings.set_flow_control(serial::FlowControl::FlowNone);
-            Ok(())
-        }).map_err(|e| ErrorKind::SerialReconfigureError(e))?;
+        self.port
+            .reconfigure(&|settings| {
+                settings.set_baud_rate(BaudRate::Baud9600).unwrap();
+                settings.set_flow_control(serial::FlowControl::FlowNone);
+                Ok(())
+            })
+            .map_err(|e| ErrorKind::SerialReconfigureError(e))?;
 
         // Default interval between messages is 1s, so 1000ms is too low.
-        try!(self.port.set_timeout(Duration::from_millis(2000)).map_err(|err| format!("Failed to set timeout: {}", err)));
+        try!(
+            self.port
+                .set_timeout(Duration::from_millis(2000))
+                .map_err(|err| format!("Failed to set timeout: {}", err))
+        );
 
         loop {
             let bytes = read_bytes(self.port).unwrap();
