@@ -1,3 +1,5 @@
+#![deny(missing_debug_implementations, missing_copy_implementations, trivial_casts,
+        trivial_numeric_casts, unstable_features, unused_import_braces, unused_qualifications)]
 #[macro_use]
 extern crate arrayref;
 #[macro_use]
@@ -14,6 +16,9 @@ use serial::prelude::*;
 
 // Keeping everything in one file for now for my sanity.
 mod errors {
+    extern crate serial;
+    use std::io;
+
     // Create the Error, ErrorKind, ResultExt, and Result types
     error_chain!{
         errors {
@@ -25,19 +30,65 @@ mod errors {
                 description("invalid checksum"),
                 display("Invalid checksum. Expected: {:x}, actual: {:x}", expected, actual)
             }
+            SerialReconfigureError(err: serial::Error) {
+                description("failed serial reconfiguration"),
+                display("Failed to reconfigure serial port: {}", err)
+            }
+            SerialReadError(err: io::Error) {
+                description("failed reading serial data"),
+                display("Failed to read data from serial port: {}", err)
+            }
         }
     }
 }
 
 use errors::*;
 
-fn main() {
+quick_main!(|| -> Result<()> {
     // TODO: Read from env::arg_os().
-    let mut port = serial::open("/dev/ttyUSB0").expect("Cannot open ttyUSB0.");
-    interact(&mut port).unwrap();
+    let device = "/dev/ttyUSB0";
+    let mut port = serial::open(device).map_err(|e| format!("Failed to open serial device {:?}: {}", device, e))?;
+    let mut nova = Nova::new(&mut port);
+
+    nova.interact()?;
+    Ok(())
+});
+
+struct Nova<'a> {
+    port: &'a mut SerialPort,
 }
 
-fn read_bytes<T: SerialPort>(port: &mut T) -> io::Result<[u8; 10]> {
+impl<'a> Nova<'a> {
+    pub fn new<T: SerialPort>(port: &mut T) -> Nova {
+        Nova { port: port }
+    }
+
+    pub fn interact(self: &mut Self) -> Result<()> {
+        self.port
+            .reconfigure(&|settings| {
+                settings.set_baud_rate(BaudRate::Baud9600).unwrap();
+                settings.set_flow_control(serial::FlowControl::FlowNone);
+                Ok(())
+            })
+            .map_err(|err| ErrorKind::SerialReconfigureError(err))?;
+
+        // Default interval between messages is 1s, so 1000ms is too low.
+        try!(
+            self.port
+                .set_timeout(Duration::from_millis(2000))
+                .map_err(|err| format!("Failed to set timeout: {}", err))
+        );
+
+        loop {
+            let bytes = read_bytes(self.port).map_err(|err| ErrorKind::SerialReadError(err))?;
+            println!("bytes: {:?}", bytes);
+            let msg = parse_message(&bytes);
+            println!("msg: {:?}", msg);
+        }
+    }
+}
+
+fn read_bytes(port: &mut SerialPort) -> io::Result<[u8; 10]> {
     let mut buf = [0_u8; 10];
     try!(port.read_exact(buf.as_mut()));
     Ok(buf)
@@ -108,24 +159,6 @@ fn parse_message(buf: &[u8; 10]) -> Result<Message> {
         pm25: ((buf[2] as u16) | ((buf[3] as u16) << 8)) as f32 / 10.0,
         pm10: ((buf[4] as u16) | ((buf[5] as u16) << 8)) as f32 / 10.0,
     })
-}
-
-fn interact<T: SerialPort>(port: &mut T) -> io::Result<()> {
-    port.reconfigure(&|settings| {
-        settings.set_baud_rate(BaudRate::Baud9600).unwrap();
-        settings.set_flow_control(serial::FlowControl::FlowNone);
-        Ok(())
-    }).unwrap();
-
-    // Default interval between messages is 1s, so 1000ms is too low.
-    try!(port.set_timeout(Duration::from_millis(2000)));
-
-    loop {
-        let bytes = read_bytes(port).unwrap();
-        println!("bytes: {:?}", bytes);
-        let msg = parse_message(&bytes);
-        println!("msg: {:?}", msg);
-    }
 }
 
 #[cfg(test)]
