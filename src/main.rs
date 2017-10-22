@@ -56,19 +56,18 @@ impl<'a> Nova<'a> {
         }
     }
 
-    pub fn interact(self: &mut Self) -> io::Result<()> {
+    pub fn interact(self: &mut Self) -> Result<()> {
         match self.port.reconfigure(&|settings| {
             settings.set_baud_rate(BaudRate::Baud9600).unwrap();
             settings.set_flow_control(serial::FlowControl::FlowNone);
             Ok(())
         }) {
-            // TODO: Figure out how to do this the right way.
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(ErrorKind::SerialReconfigureError(e).into()),
             Ok(()) => ()
         }
 
         // Default interval between messages is 1s, so 1000ms is too low.
-        try!(self.port.set_timeout(Duration::from_millis(2000)));
+        try!(self.port.set_timeout(Duration::from_millis(2000)).map_err(|err| format!("Failed to set timeout: {}", err)));
 
         loop {
             let bytes = read_bytes(self.port).unwrap();
